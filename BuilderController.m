@@ -31,6 +31,7 @@
 
 #import "BuilderController.h"
 #import "ZipArchive.h"
+#import "BetaBuilderAppDelegate.h"
 
 @implementation BuilderController
 
@@ -102,6 +103,42 @@
 	[generateFilesButton setEnabled:YES];
 }
 
+- (void) replaceItemAtURL:(NSURL *)oldFile withItemAtURL:(NSURL *)newFile context:(NSString *)context {
+	NSFileManager *fileManager = [NSFileManager defaultManager];
+	NSError *error = nil;
+	if (![fileManager removeItemAtURL:oldFile error:&error]) {
+		NSLog(@"Removing old file %@ failed: %@", oldFile, error);
+		if (!([error domain] == NSCocoaErrorDomain && [error code] == NSFileNoSuchFileError)) {
+			BetaBuilderAppDelegate *appDelegate = (BetaBuilderAppDelegate *)[[NSApplication sharedApplication] delegate];
+			NSAlert *alert = [[NSAlert alloc] init];
+			[alert setAlertStyle:NSWarningAlertStyle];
+			[alert setMessageText:[NSString stringWithFormat:@"An error occurred while %@ (removing old):", context]];
+			[alert setInformativeText:[error localizedDescription]];
+			[alert beginSheetModalForWindow:appDelegate.window
+							  modalDelegate:self
+							 didEndSelector:@selector(alertDidEnd:returnCode:contextInfo:)
+								contextInfo:NULL];
+			[alert release];
+		}
+	}
+	if (![fileManager copyItemAtURL:newFile toURL:oldFile error:&error]) {
+		NSLog(@"Copying file %@ failed: %@", newFile, error);
+		BetaBuilderAppDelegate *appDelegate = (BetaBuilderAppDelegate *)[[NSApplication sharedApplication] delegate];
+		NSAlert *alert = [[NSAlert alloc] init];
+		[alert setAlertStyle:NSWarningAlertStyle];
+		[alert setMessageText:[NSString stringWithFormat:@"An error occurred while %@:", context]];
+		[alert setInformativeText:[error localizedDescription]];
+		[alert beginSheetModalForWindow:appDelegate.window
+						  modalDelegate:self
+						 didEndSelector:@selector(alertDidEnd:returnCode:contextInfo:)
+							contextInfo:NULL];
+		[alert release];
+	}
+}
+
+- (void) alertDidEnd:(NSAlert *)alert returnCode:(NSInteger)returnCode contextInfo:(void *)contextInfo {
+}
+
 - (IBAction)generateFiles:(id)sender {
 	//create plist
 	NSString *encodedIpaFilename = [[[archiveIPAFilenameField stringValue] lastPathComponent] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]; //this isn't the most robust way to do this
@@ -135,14 +172,9 @@
 		[htmlTemplateString writeToURL:[saveDirectoryURL URLByAppendingPathComponent:@"index.html"] atomically:YES encoding:NSASCIIStringEncoding error:nil];
 		
 		//Copy IPA
-		NSError *fileCopyError;
-		NSFileManager *fileManager = [NSFileManager defaultManager];
 		NSURL *ipaSourceURL = [NSURL fileURLWithPath:[archiveIPAFilenameField stringValue]];
 		NSURL *ipaDestinationURL = [saveDirectoryURL URLByAppendingPathComponent:[[archiveIPAFilenameField stringValue] lastPathComponent]];
-		BOOL copiedIPAFile = [fileManager copyItemAtURL:ipaSourceURL toURL:ipaDestinationURL error:&fileCopyError];
-		if (!copiedIPAFile) {
-			NSLog(@"Error Copying IPA File: %@", fileCopyError);
-		}
+		[self replaceItemAtURL:ipaDestinationURL withItemAtURL:ipaSourceURL context:@"copying the IPA file"];
 		
 		//Copy README
 		NSString *readmeContents = [[NSBundle mainBundle] pathForResource:@"README" ofType:@""];
